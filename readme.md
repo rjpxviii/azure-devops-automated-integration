@@ -69,12 +69,12 @@ flowchart TB
     CDN_Purge --> Smoke_Tests
     Smoke_Tests --> Monitoring
     
-    classDef devphase fill:#D4F1F9,stroke:#05445E,stroke-width:2px
-    classDef ciphase fill:#FFEED9,stroke:#7D5A50,stroke-width:2px
-    classDef cdphase fill:#E7FBBE,stroke:#4C6793,stroke-width:2px
-    classDef devenv fill:#B5EAEA,stroke:#05445E,stroke-width:1px
-    classDef stageenv fill:#FFBCBC,stroke:#7D5A50,stroke-width:1px
-    classDef prodenv fill:#D8F8B7,stroke:#4C6793,stroke-width:1px
+    classDef devphase fill:#A1D6E2,stroke:#1A3A3A,stroke-width:2px,color:#000000
+    classDef ciphase fill:#F9C784,stroke:#995D2A,stroke-width:2px,color:#000000
+    classDef cdphase fill:#C3E8BD,stroke:#2F6D3A,stroke-width:2px,color:#000000
+    classDef devenv fill:#68BBE3,stroke:#0E4E6C,stroke-width:1px,color:#000000
+    classDef stageenv fill:#F67280,stroke:#9A2A2A,stroke-width:1px,color:#000000
+    classDef prodenv fill:#A0D995,stroke:#2D6A3A,stroke-width:1px,color:#000000
     
     class Dev_Commit,PR,Code_Review,Auto_Tests devphase
     class Build,Unit_Tests,Code_Analysis,Sec_Scan,Package ciphase
