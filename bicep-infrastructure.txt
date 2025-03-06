@@ -1,0 +1,313 @@
+@description('The environment name (e.g., dev, staging, prod)')
+param environmentName string = 'staging'
+
+@description('The location for all resources')
+param location string = resourceGroup().location
+
+@description('The name of the web application')
+param appName string = 'mywebapp'
+
+@description('The SKU of the App Service Plan')
+param appServicePlanSku object = {
+  name: 'P1v2'
+  tier: 'PremiumV2'
+  size: 'P1v2'
+  family: 'Pv2'
+  capacity: 1
+}
+
+@description('Enable or disable staging slot')
+param enableStaging bool = true
+
+@description('Github repository URL')
+param repositoryUrl string = 'https://github.com/yourusername/mywebapp'
+
+@description('Github branch to deploy')
+param branch string = 'main'
+
+var webAppName = '${appName}-${environmentName}'
+var appServicePlanName = '${appName}-plan-${environmentName}'
+var appInsightsName = '${appName}-insights-${environmentName}'
+var cdnProfileName = '${appName}-cdn-${environmentName}'
+var cdnEndpointName = '${appName}-endpoint-${environmentName}'
+var storageAccountName = '${replace(appName, '-', '')}${environmentName}sa'
+
+// App Service Plan
+resource appServicePlan 'Microsoft.Web/serverfarms@2021-02-01' = {
+  name: appServicePlanName
+  location: location
+  sku: appServicePlanSku
+  properties: {
+    reserved: true
+  }
+}
+
+// Application Insights
+resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
+  name: appInsightsName
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    Request_Source: 'rest'
+    RetentionInDays: 90
+    publicNetworkAccessForIngestion: 'Enabled'
+    publicNetworkAccessForQuery: 'Enabled'
+  }
+}
+
+// Storage Account for Static Content
+resource storageAccount 'Microsoft.Storage/storageAccounts@2021-06-01' = {
+  name: storageAccountName
+  location: location
+  kind: 'StorageV2'
+  sku: {
+    name: 'Standard_LRS'
+  }
+  properties: {
+    supportsHttpsTrafficOnly: true
+    accessTier: 'Hot'
+    allowBlobPublicAccess: true
+    minimumTlsVersion: 'TLS1_2'
+  }
+}
+
+// Static Website Configuration
+resource staticWebsite 'Microsoft.Storage/storageAccounts/blobServices/containers@2021-06-01' = {
+  name: '${storageAccount.name}/default/$web'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+// CDN Profile
+resource cdnProfile 'Microsoft.Cdn/profiles@2020-09-01' = {
+  name: cdnProfileName
+  location: location
+  sku: {
+    name: 'Standard_Microsoft'
+  }
+}
+
+// CDN Endpoint
+resource cdnEndpoint 'Microsoft.Cdn/profiles/endpoints@2020-09-01' = {
+  parent: cdnProfile
+  name: cdnEndpointName
+  location: location
+  properties: {
+    originHostHeader: '${storageAccountName}.blob.core.windows.net'
+    isHttpAllowed: false
+    isHttpsAllowed: true
+    queryStringCachingBehavior: 'IgnoreQueryString'
+    contentTypesToCompress: [
+      'text/plain'
+      'text/html'
+      'text/css'
+      'application/x-javascript'
+      'text/javascript'
+      'application/javascript'
+      'application/json'
+      'image/svg+xml'
+    ]
+    isCompressionEnabled: true
+    origins: [
+      {
+        name: 'origin1'
+        properties: {
+          hostName: '${storageAccountName}.blob.core.windows.net'
+          originHostHeader: '${storageAccountName}.blob.core.windows.net'
+          httpsPort: 443
+          enabled: true
+        }
+      }
+    ]
+    deliveryPolicy: {
+      rules: [
+        {
+          name: 'EnforceHTTPS'
+          order: 1
+          conditions: [
+            {
+              name: 'RequestScheme'
+              parameters: {
+                typeName: 'DeliveryRuleRequestSchemeConditionParameters'
+                matchValues: [
+                  'HTTP'
+                ]
+                operator: 'Equal'
+              }
+            }
+          ]
+          actions: [
+            {
+              name: 'UrlRedirect'
+              parameters: {
+                typeName: 'DeliveryRuleUrlRedirectActionParameters'
+                redirectType: 'Found'
+                destinationProtocol: 'Https'
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+// Web App
+resource webApp 'Microsoft.Web/sites@2021-02-01' = {
+  name: webAppName
+  location: location
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    siteConfig: {
+      appSettings: [
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~18'
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: appInsights.properties.InstrumentationKey
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'false'
+        }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '1'
+        }
+        {
+          name: 'STATIC_WEBSITE_URL'
+          value: 'https://${cdnEndpoint.properties.hostName}'
+        }
+      ]
+      cors: {
+        allowedOrigins: [
+          'https://${cdnEndpoint.properties.hostName}'
+        ]
+      }
+      healthCheckPath: '/health'
+      minTlsVersion: '1.2'
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+// Staging Slot (if enabled)
+resource stagingSlot 'Microsoft.Web/sites/slots@2021-02-01' = if (enableStaging) {
+  parent: webApp
+  name: 'staging'
+  location: location
+  properties: {
+    serverFarmId: appServicePlan.id
+    httpsOnly: true
+    siteConfig: {
+      appSettings: [
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~18'
+        }
+        {
+          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
+          value: appInsights.properties.InstrumentationKey
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        {
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: 'false'
+        }
+        {
+          name: 'WEBSITE_RUN_FROM_PACKAGE'
+          value: '1'
+        }
+        {
+          name: 'STATIC_WEBSITE_URL'
+          value: 'https://${cdnEndpoint.properties.hostName}'
+        }
+        {
+          name: 'ENVIRONMENT'
+          value: 'staging'
+        }
+      ]
+    }
+  }
+  identity: {
+    type: 'SystemAssigned'
+  }
+}
+
+// Application Insights Web Test
+resource webTest 'Microsoft.Insights/webtests@2022-06-15' = {
+  name: '${webAppName}-webtest'
+  location: location
+  properties: {
+    SyntheticMonitorId: '${webAppName}-webtest'
+    Name: '${webAppName} Availability Test'
+    Description: 'Verifies the web app is responding'
+    Enabled: true
+    Frequency: 300
+    Timeout: 120
+    Kind: 'standard'
+    RetryEnabled: true
+    Locations: [
+      {
+        Id: 'us-va-ash-azr'
+      }
+      {
+        Id: 'us-tx-sn1-azr'
+      }
+      {
+        Id: 'us-il-ch1-azr'
+      }
+    ]
+    Configuration: {
+      WebTest: '<WebTest Name="${webAppName} Availability Test" Id="${guid(webAppName)}" Enabled="True" CssProjectStructure="" CssIteration="" Timeout="120" WorkItemIds="" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010" Description="" CredentialUserName="" CredentialPassword="" PreAuthenticate="False" Proxy="default" StopOnError="False" RecordedResultFile="" ResultsLocale=""><Items><Request Method="GET" Guid="${guid(webAppName, 'request')}" Version="1.1" Url="https://${webApp.properties.defaultHostName}/health" ThinkTime="0" Timeout="120" ParseDependentRequests="False" FollowRedirects="True" RecordResult="True" Cache="False" ResponseTimeGoal="0" Encoding="utf-8" ExpectedHttpStatusCode="200" ExpectedResponseUrl="" ReportingName="" IgnoreHttpStatusCode="False" /></Items></WebTest>'
+    }
+  }
+  tags: {
+    'hidden-link:${appInsights.id}': 'Resource'
+  }
+}
+
+// Alert for Web App Availability
+resource availabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: '${webAppName}-availability-alert'
+  location: 'global'
+  properties: {
+    description: 'Alert when web app availability drops below threshold'
+    severity: 2
+    enabled: true
+    scopes: [
+      webTest.id
+      appInsights.id
+    ]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      webTestId: webTest.id
+      componentId: appInsights.id
+      failedLocationCount: 2
+      'odata.type': 'Microsoft.Azure.Monitor.WebtestLocationAvailabilityCriteria'
+    }
+    actions: [
+      // Create and link Action Groups manually in portal or add here
+    ]
+  }
+}
+
+// Outputs
+output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
+output stagingUrl string = enableStaging ? 'https://${stagingSlot.properties.defaultHostName}' : ''
+output cdnEndpointUrl string = 'https://${cdnEndpoint.properties.hostName}'

@@ -1,0 +1,487 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "projectName": {
+      "type": "string",
+      "metadata": {
+        "description": "The name of the Azure DevOps project"
+      }
+    },
+    "releasePipelineName": {
+      "type": "string",
+      "defaultValue": "Web Content CD Pipeline",
+      "metadata": {
+        "description": "Name of the release pipeline"
+      }
+    },
+    "repositoryName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the repository containing the code"
+      }
+    },
+    "serviceConnectionId": {
+      "type": "string",
+      "metadata": {
+        "description": "ID of the Azure Service Connection to use for deployments"
+      }
+    }
+  },
+  "variables": {
+    "releaseDefinition": {
+      "id": "[resourceId('Microsoft.Resources/deployments', 'releaseDefinition')]",
+      "name": "[parameters('releasePipelineName')]",
+      "source": "restApi",
+      "revision": 1,
+      "createdBy": {
+        "displayName": "Azure Automation",
+        "id": "00000000-0000-0000-0000-000000000000"
+      },
+      "createdOn": "[utcNow()]",
+      "modifiedBy": {
+        "displayName": "Azure Automation",
+        "id": "00000000-0000-0000-0000-000000000000"
+      },
+      "modifiedOn": "[utcNow()]",
+      "isDeleted": false,
+      "variableGroups": [],
+      "environments": [
+        {
+          "id": 1,
+          "name": "Development",
+          "rank": 1,
+          "owner": {
+            "displayName": "Azure Automation",
+            "id": "00000000-0000-0000-0000-000000000000"
+          },
+          "variables": {
+            "WebAppName": {
+              "value": "dev-mywebapp"
+            },
+            "Environment": {
+              "value": "Development"
+            }
+          },
+          "preDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": true,
+                "isNotificationOn": false
+              }
+            ]
+          },
+          "deployStep": {
+            "tasks": [
+              {
+                "taskId": "497d490f-eea7-4f2b-ab94-48d9c1acdcb1",
+                "version": "4.*",
+                "name": "Azure App Service Deploy",
+                "enabled": true,
+                "inputs": {
+                  "ConnectionType": "AzureRM",
+                  "ConnectedServiceName": "[parameters('serviceConnectionId')]",
+                  "appType": "webApp",
+                  "WebAppName": "$(WebAppName)",
+                  "packageForLinux": "$(System.DefaultWorkingDirectory)/**/*.zip",
+                  "AppSettings": "-WEBSITE_NODE_DEFAULT_VERSION 18.x -ENVIRONMENT $(Environment)"
+                }
+              },
+              {
+                "taskId": "6c731c3c-3c68-459a-a5c9-bde6e6595b5b",
+                "version": "3.*",
+                "name": "Run Functional Tests",
+                "enabled": true,
+                "inputs": {
+                  "script": "npm install -g cypress\nnpx cypress run --config baseUrl=https://$(WebAppName).azurewebsites.net"
+                }
+              }
+            ]
+          },
+          "postDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": true,
+                "isNotificationOn": false
+              }
+            ]
+          },
+          "deployPhases": [
+            {
+              "deploymentInput": {
+                "parallelExecution": {
+                  "parallelExecutionType": "none"
+                },
+                "skipArtifactsDownload": false,
+                "artifactsDownloadInput": {
+                  "downloadInputs": []
+                },
+                "queueId": 1,
+                "demands": [],
+                "enableAccessToken": false
+              },
+              "rank": 1,
+              "phaseType": 1,
+              "name": "Development Deployment",
+              "workflowTasks": []
+            }
+          ],
+          "environmentOptions": {
+            "emailNotificationType": "OnlyOnFailure",
+            "emailRecipients": "release.environment.owner;release.creator",
+            "skipArtifactsDownload": false,
+            "timeoutInMinutes": 0,
+            "enableAccessToken": false,
+            "publishDeploymentStatus": true,
+            "badgeEnabled": false,
+            "autoLinkWorkItems": false
+          },
+          "demands": [],
+          "conditions": [
+            {
+              "conditionType": 1,
+              "name": "ReleaseStarted",
+              "value": ""
+            }
+          ],
+          "executionPolicy": {
+            "concurrencyCount": 1,
+            "queueDepthCount": 0
+          },
+          "schedules": [],
+          "retentionPolicy": {
+            "daysToKeep": 30,
+            "releasesToKeep": 3,
+            "retainBuild": true
+          }
+        },
+        {
+          "id": 2,
+          "name": "Staging",
+          "rank": 2,
+          "owner": {
+            "displayName": "Azure Automation",
+            "id": "00000000-0000-0000-0000-000000000000"
+          },
+          "variables": {
+            "WebAppName": {
+              "value": "staging-mywebapp"
+            },
+            "Environment": {
+              "value": "Staging"
+            }
+          },
+          "preDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": false,
+                "isNotificationOn": true,
+                "approver": {
+                  "displayName": "Project Administrator",
+                  "id": "[concat('vssgp.', parameters('projectName'), '.ProjectAdministrator')]"
+                }
+              }
+            ]
+          },
+          "deployStep": {
+            "tasks": [
+              {
+                "taskId": "497d490f-eea7-4f2b-ab94-48d9c1acdcb1",
+                "version": "4.*",
+                "name": "Azure App Service Deploy",
+                "enabled": true,
+                "inputs": {
+                  "ConnectionType": "AzureRM",
+                  "ConnectedServiceName": "[parameters('serviceConnectionId')]",
+                  "appType": "webApp",
+                  "WebAppName": "$(WebAppName)",
+                  "packageForLinux": "$(System.DefaultWorkingDirectory)/**/*.zip",
+                  "AppSettings": "-WEBSITE_NODE_DEFAULT_VERSION 18.x -ENVIRONMENT $(Environment)"
+                }
+              },
+              {
+                "taskId": "6c731c3c-3c68-459a-a5c9-bde6e6595b5b",
+                "version": "3.*",
+                "name": "Run Load Tests",
+                "enabled": true,
+                "inputs": {
+                  "script": "npm install -g artillery\narsenal run ./performance-tests/load-test.yml -e staging -o artillery-report.json\narsenal report artillery-report.json -o artillery-report.html"
+                }
+              },
+              {
+                "taskId": "b0ce7256-7898-45d3-9cb5-176b752bfea6",
+                "version": "3.*",
+                "name": "Publish Performance Test Results",
+                "enabled": true,
+                "inputs": {
+                  "Contents": "artillery-report.html",
+                  "TargetFolder": "$(Build.ArtifactStagingDirectory)/PerformanceReports",
+                  "CleanTargetFolder": "true",
+                  "OverWrite": "true"
+                }
+              }
+            ]
+          },
+          "postDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": true,
+                "isNotificationOn": false
+              }
+            ]
+          },
+          "deployPhases": [
+            {
+              "deploymentInput": {
+                "parallelExecution": {
+                  "parallelExecutionType": "none"
+                },
+                "skipArtifactsDownload": false,
+                "artifactsDownloadInput": {
+                  "downloadInputs": []
+                },
+                "queueId": 1,
+                "demands": [],
+                "enableAccessToken": false
+              },
+              "rank": 1,
+              "phaseType": 1,
+              "name": "Staging Deployment",
+              "workflowTasks": []
+            }
+          ],
+          "environmentOptions": {
+            "emailNotificationType": "Always",
+            "emailRecipients": "release.environment.owner;release.creator",
+            "skipArtifactsDownload": false,
+            "timeoutInMinutes": 0,
+            "enableAccessToken": false,
+            "publishDeploymentStatus": true,
+            "badgeEnabled": true,
+            "autoLinkWorkItems": true
+          },
+          "demands": [],
+          "conditions": [
+            {
+              "conditionType": 2,
+              "name": "Development",
+              "value": "4"
+            }
+          ],
+          "executionPolicy": {
+            "concurrencyCount": 1,
+            "queueDepthCount": 0
+          },
+          "schedules": [],
+          "retentionPolicy": {
+            "daysToKeep": 30,
+            "releasesToKeep": 3,
+            "retainBuild": true
+          }
+        },
+        {
+          "id": 3,
+          "name": "Production",
+          "rank": 3,
+          "owner": {
+            "displayName": "Azure Automation",
+            "id": "00000000-0000-0000-0000-000000000000"
+          },
+          "variables": {
+            "WebAppName": {
+              "value": "mywebapp"
+            },
+            "Environment": {
+              "value": "Production"
+            },
+            "ResourceGroup": {
+              "value": "mywebapp-rg"
+            }
+          },
+          "preDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": false,
+                "isNotificationOn": true,
+                "approver": {
+                  "displayName": "Release Manager",
+                  "id": "[concat('vssgp.', parameters('projectName'), '.ReleaseManager')]"
+                }
+              }
+            ]
+          },
+          "deployStep": {
+            "tasks": [
+              {
+                "taskId": "497d490f-eea7-4f2b-ab94-48d9c1acdcb1",
+                "version": "4.*",
+                "name": "Azure App Service Deploy",
+                "enabled": true,
+                "inputs": {
+                  "ConnectionType": "AzureRM",
+                  "ConnectedServiceName": "[parameters('serviceConnectionId')]",
+                  "appType": "webApp",
+                  "WebAppName": "$(WebAppName)",
+                  "packageForLinux": "$(System.DefaultWorkingDirectory)/**/*.zip",
+                  "AppSettings": "-WEBSITE_NODE_DEFAULT_VERSION 18.x -ENVIRONMENT $(Environment)"
+                }
+              },
+              {
+                "taskId": "46e4be58-1131-4aa0-86c3-de717fdc971c",
+                "version": "3.*",
+                "name": "Purge CDN Endpoint",
+                "enabled": true,
+                "inputs": {
+                  "ConnectedServiceNameARM": "[parameters('serviceConnectionId')]",
+                  "ResourceGroupName": "$(ResourceGroup)",
+                  "ScriptType": "InlineScript",
+                  "ScriptArguments": "",
+                  "Inline": "az cdn endpoint purge --resource-group $(ResourceGroup) --name mywebapp-endpoint --profile-name mywebapp-cdn --content-paths '/*'",
+                  "ScriptPath": "",
+                  "addSpnToEnvironment": "false"
+                }
+              },
+              {
+                "taskId": "6c731c3c-3c68-459a-a5c9-bde6e6595b5b",
+                "version": "3.*",
+                "name": "Run Verification Tests",
+                "enabled": true,
+                "inputs": {
+                  "script": "npm install -g cypress\nnpx cypress run --config baseUrl=https://$(WebAppName).azurewebsites.net --spec \"cypress/e2e/smoke/*.cy.js\""
+                }
+              },
+              {
+                "taskId": "6c731c3c-3c68-459a-a5c9-bde6e6595b5b",
+                "version": "3.*",
+                "name": "Add Release Tag",
+                "enabled": true,
+                "inputs": {
+                  "script": "git tag prod-$(Build.BuildNumber)\ngit push origin prod-$(Build.BuildNumber)"
+                }
+              }
+            ]
+          },
+          "postDeployApprovals": {
+            "approvals": [
+              {
+                "rank": 1,
+                "isAutomated": true,
+                "isNotificationOn": false
+              }
+            ]
+          },
+          "deployPhases": [
+            {
+              "deploymentInput": {
+                "parallelExecution": {
+                  "parallelExecutionType": "none"
+                },
+                "skipArtifactsDownload": false,
+                "artifactsDownloadInput": {
+                  "downloadInputs": []
+                },
+                "queueId": 1,
+                "demands": [],
+                "enableAccessToken": false
+              },
+              "rank": 1,
+              "phaseType": 1,
+              "name": "Production Deployment",
+              "workflowTasks": []
+            }
+          ],
+          "environmentOptions": {
+            "emailNotificationType": "Always",
+            "emailRecipients": "release.environment.owner;release.creator",
+            "skipArtifactsDownload": false,
+            "timeoutInMinutes": 0,
+            "enableAccessToken": false,
+            "publishDeploymentStatus": true,
+            "badgeEnabled": true,
+            "autoLinkWorkItems": true
+          },
+          "demands": [],
+          "conditions": [
+            {
+              "conditionType": 2,
+              "name": "Staging",
+              "value": "4"
+            }
+          ],
+          "executionPolicy": {
+            "concurrencyCount": 1,
+            "queueDepthCount": 0
+          },
+          "schedules": [],
+          "retentionPolicy": {
+            "daysToKeep": 90,
+            "releasesToKeep": 5,
+            "retainBuild": true
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "sourceId": "[concat(parameters('projectName'), '/', parameters('repositoryName'))]",
+          "type": "Build",
+          "alias": "WebAppBuild",
+          "definitionReference": {
+            "artifactSourceDefinitionUrl": {
+              "id": "https://dev.azure.com/fabrikam/_permalink/_build/index?collectionId=5803f751-94ae-47c2-a329-c55e82892b48&projectId=c28aa21f-3e9c-4814-bfbd-40002b3b7e1e&definitionId=1",
+              "name": ""
+            },
+            "defaultVersionType": {
+              "id": "latestType",
+              "name": "Latest"
+            },
+            "definition": {
+              "id": "1",
+              "name": "WebApp-CI"
+            },
+            "project": {
+              "id": "[parameters('projectName')]",
+              "name": "[parameters('projectName')]"
+            }
+          },
+          "isPrimary": true
+        }
+      ],
+      "triggers": [
+        {
+          "artifactAlias": "WebAppBuild",
+          "triggerType": 1
+        }
+      ]
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-05-01",
+      "name": "releaseDefinition",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": []
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "releaseDefinitionId": {
+      "type": "string",
+      "value": "[variables('releaseDefinition').id]"
+    },
+    "releaseDefinitionName": {
+      "type": "string",
+      "value": "[variables('releaseDefinition').name]"
+    }
+  }
+}

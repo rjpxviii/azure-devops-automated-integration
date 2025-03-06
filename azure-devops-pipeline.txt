@@ -1,0 +1,215 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+    - feature/*
+  paths:
+    include:
+    - src/*
+    - public/*
+    - package.json
+    - yarn.lock
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: webapp-variables
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm
+  - name: STAGING_URL
+    value: 'https://staging-mywebapp.azurewebsites.net'
+  - name: PRODUCTION_URL
+    value: 'https://mywebapp.azurewebsites.net'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: BuildAndTest
+    displayName: 'Build, Test, and Package'
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '18.x'
+      displayName: 'Install Node.js'
+
+    - task: Cache@2
+      inputs:
+        key: 'npm | "$(Agent.OS)" | package-lock.json'
+        restoreKeys: |
+          npm | "$(Agent.OS)"
+        path: $(npm_config_cache)
+      displayName: 'Cache npm packages'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npm run lint
+      displayName: 'Run ESLint'
+      continueOnError: true
+
+    - script: |
+        npm run test:ci
+      displayName: 'Run Unit Tests'
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/junit.xml'
+        mergeTestResults: true
+        testRunTitle: 'Unit Tests'
+      displayName: 'Publish Test Results'
+      condition: succeededOrFailed()
+
+    - task: PublishCodeCoverageResults@1
+      inputs:
+        codeCoverageTool: 'Cobertura'
+        summaryFileLocation: '$(System.DefaultWorkingDirectory)/coverage/cobertura-coverage.xml'
+        reportDirectory: '$(System.DefaultWorkingDirectory)/coverage/lcov-report'
+      displayName: 'Publish Code Coverage'
+      condition: succeededOrFailed()
+
+    - script: |
+        npm run build
+      displayName: 'Build Application'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/build'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        replaceExistingArchive: true
+      displayName: 'Create Build Archive'
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+      displayName: 'Publish Build Artifacts'
+
+- stage: DeployToStaging
+  displayName: 'Deploy to Staging'
+  dependsOn: Build
+  condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+  jobs:
+  - deployment: DeployToStaging
+    displayName: 'Deploy to Staging Environment'
+    environment: 'Staging'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              appType: 'webApp'
+              appName: 'staging-mywebapp'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              deploymentMethod: 'auto'
+            displayName: 'Deploy to Azure Web App (Staging)'
+
+          - script: |
+              npm install -g lighthouse
+              npx lighthouse $(STAGING_URL) --output json --output html --output-path $(System.DefaultWorkingDirectory)/lighthouse-report
+            displayName: 'Run Lighthouse Performance Audit'
+
+          - task: PublishBuildArtifacts@1
+            inputs:
+              PathtoPublish: '$(System.DefaultWorkingDirectory)/lighthouse-report'
+              ArtifactName: 'lighthouse-report'
+              publishLocation: 'Container'
+            displayName: 'Publish Lighthouse Report'
+
+          - task: Bash@3
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Run E2E tests on staging
+                npm install -g cypress
+                npx cypress run --config baseUrl=$(STAGING_URL)
+            displayName: 'Run E2E Tests on Staging'
+            continueOnError: true
+
+- stage: DeployToProduction
+  displayName: 'Deploy to Production'
+  dependsOn: DeployToStaging
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProduction
+    displayName: 'Deploy to Production Environment'
+    environment: 'Production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            inputs:
+              azureSubscription: 'AzureServiceConnection'
+              appType: 'webApp'
+              appName: 'mywebapp'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              deploymentMethod: 'auto'
+            displayName: 'Deploy to Azure Web App (Production)'
+
+          - task: Bash@3
+            inputs:
+              targetType: 'inline'
+              script: |
+                # Send notification about successful deployment
+                curl -X POST -H "Content-Type: application/json" \
+                  -d "{\"text\":\"✅ Successfully deployed web content to production: $(PRODUCTION_URL)\"}" \
+                  $(TEAMS_WEBHOOK_URL)
+            displayName: 'Send Deployment Notification'
+            continueOnError: true
+
+- stage: Monitoring
+  displayName: 'Post-Deployment Monitoring'
+  dependsOn: DeployToProduction
+  condition: succeeded()
+  jobs:
+  - job: MonitorPerformance
+    displayName: 'Monitor Application Performance'
+    steps:
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Run synthetic monitoring
+          npm install -g newman
+          npx newman run $(System.DefaultWorkingDirectory)/postman/monitoring-collection.json \
+            --environment $(System.DefaultWorkingDirectory)/postman/prod-environment.json \
+            --reporters cli,junit,htmlextra \
+            --reporter-junit-export $(System.DefaultWorkingDirectory)/newman-results/newman-report.xml \
+            --reporter-htmlextra-export $(System.DefaultWorkingDirectory)/newman-results/newman-report.html
+      displayName: 'Run API Monitoring Tests'
+      continueOnError: true
+
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '$(System.DefaultWorkingDirectory)/newman-results/*.xml'
+        mergeTestResults: true
+        testRunTitle: 'API Monitoring Tests'
+      displayName: 'Publish API Monitoring Test Results'
+      condition: succeededOrFailed()
+
+    - task: AzureCLI@2
+      inputs:
+        azureSubscription: 'AzureServiceConnection'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          # Enable Application Insights alerts
+          az monitor alert create \
+            --name "High CPU Usage" \
+            --resource-group myResourceGroup \
+            --condition "Metric CPU percentage > 80" \
+            --action $(ALERT_ACTION_GROUP_ID)
+      displayName: 'Set Up Production Monitoring Alerts'
+      continueOnError: true

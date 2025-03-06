@@ -1,0 +1,300 @@
+name: CI/CD for Web Application
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+        required: true
+        default: 'dev'
+
+env:
+  NODE_VERSION: '18.x'
+  AZURE_WEBAPP_NAME: 'mywebapp'
+  AZURE_WEBAPP_PACKAGE_PATH: './build'
+  AZURE_RESOURCE_GROUP: 'mywebapp-rg'
+
+jobs:
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better relevancy of SonarCloud analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check code formatting
+        run: npm run format:check
+
+      - name: Lint code
+        run: npm run lint
+
+      - name: Run security audit
+        run: npm audit --audit-level=high
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  test:
+    name: Test
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test -- --coverage --watchAll=false
+
+      - name: Upload test coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: build
+
+  deploy_dev:
+    name: Deploy to Development
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'dev'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: Development
+      url: https://dev-mywebapp.azurewebsites.net
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: build
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'dev-${{ env.AZURE_WEBAPP_NAME }}'
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          slot-name: 'production'
+
+      - name: Run Lighthouse audit
+        uses: treosh/lighthouse-ci-action@v9
+        with:
+          urls: |
+            https://dev-mywebapp.azurewebsites.net
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  deploy_staging:
+    name: Deploy to Staging
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    needs: [build, deploy_dev]
+    runs-on: ubuntu-latest
+    environment:
+      name: Staging
+      url: https://staging-mywebapp.azurewebsites.net
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: build
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'staging-${{ env.AZURE_WEBAPP_NAME }}'
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          slot-name: 'production'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Cypress
+        run: npm install cypress
+
+      - name: Run E2E Tests
+        uses: cypress-io/github-action@v5
+        with:
+          browser: chrome
+          config: baseUrl=https://staging-mywebapp.azurewebsites.net
+          wait-on: 'https://staging-mywebapp.azurewebsites.net'
+          wait-on-timeout: 120
+
+  deploy_production:
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main' && github.event.inputs.environment == 'production'
+    needs: deploy_staging
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: https://mywebapp.azurewebsites.net
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+          path: build
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+          slot-name: 'production'
+
+      - name: Create deployment tag
+        run: |
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          git tag prod-$TIMESTAMP
+          git push origin prod-$TIMESTAMP
+
+      - name: Purge CDN endpoint
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            az cdn endpoint purge \
+              --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+              --name mywebapp-endpoint \
+              --profile-name mywebapp-cdn \
+              --content-paths '/*'
+
+      - name: Create release in Azure DevOps
+        uses: azure/pipelines@v1
+        with:
+          azure-devops-project-url: 'https://dev.azure.com/myorganization/mywebapp'
+          azure-pipeline-name: 'post-deployment-tasks'
+          azure-devops-token: ${{ secrets.AZURE_DEVOPS_TOKEN }}
+
+  monitoring:
+    name: Post-Deployment Monitoring
+    needs: [deploy_production]
+    if: always() && (needs.deploy_production.result == 'success' || needs.deploy_staging.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check application health
+        run: |
+          # Determine which environment was deployed
+          if [ "${{ needs.deploy_production.result }}" = "success" ]; then
+            APP_URL="https://mywebapp.azurewebsites.net"
+          else
+            APP_URL="https://staging-mywebapp.azurewebsites.net"
+          fi
+          
+          # Check if app is responding
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $APP_URL/health)
+          if [ $HTTP_STATUS -ne 200 ]; then
+            echo "Application health check failed with status $HTTP_STATUS"
+            exit 1
+          fi
+          
+          echo "Application health check successful with status $HTTP_STATUS"
+
+      - name: Run performance tests
+        run: |
+          npm install -g artillery
+          artillery run ./performance-tests/load-test.yml -e production -o artillery-report.json
+          
+      - name: Generate performance report
+        run: |
+          artillery report artillery-report.json -o artillery-report.html
+          
+      - name: Upload performance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-report
+          path: artillery-report.html
+          
+      - name: Check for alerts in Application Insights
+        uses: azure/CLI@v1
+        with:
+          inlineScript: |
+            # Get recent alerts
+            ALERTS=$(az monitor alert list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[?properties.essentials.monitorCondition=='Fired'].{Name:name, Severity:properties.essentials.severity, Time:properties.essentials.startDateTime}" -o json)
+            
+            # Log alerts for review
+            echo "Recent alerts: $ALERTS"
+            
+            # Check if there are any critical alerts
+            CRITICAL_ALERTS=$(echo $ALERTS | jq '[.[] | select(.Severity == "Sev0" or .Severity == "Sev1")] | length')
+            
+            if [ "$CRITICAL_ALERTS" -gt 0 ]; then
+              echo "There are $CRITICAL_ALERTS critical alerts active!"
+              # Don't fail the pipeline, but notify
+            fi

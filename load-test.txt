@@ -1,0 +1,133 @@
+config:
+  environments:
+    production:
+      target: "https://mywebapp.azurewebsites.net"
+      phases:
+        - duration: 60
+          arrivalRate: 5
+          rampTo: 20
+          name: "Warm up phase"
+        - duration: 120
+          arrivalRate: 20
+          rampTo: 50
+          name: "Peak load test phase"
+        - duration: 60
+          arrivalRate: 50
+          rampTo: 10
+          name: "Ramp down phase"
+    staging:
+      target: "https://staging-mywebapp.azurewebsites.net"
+      phases:
+        - duration: 30
+          arrivalRate: 2
+          rampTo: 10
+          name: "Staging warm up"
+        - duration: 60
+          arrivalRate: 10
+          name: "Staging steady load"
+  defaults:
+    headers:
+      User-Agent: "Artillery Load Test"
+  plugins:
+    expect: {}
+    metrics-by-endpoint: {}
+  processor: "./custom-functions.js"
+  http:
+    timeout: 10
+  apdex:
+    threshold: 100
+  ensure:
+    maxErrorRate: 5
+    max: 200  # ms
+
+scenarios:
+  - name: "Browse the website"
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
+            - contentType: "text/html"
+      - think: 3
+      - get:
+          url: "/about"
+          expect:
+            - statusCode: 200
+            - contentType: "text/html"
+      - think: 2
+      - get:
+          url: "/contact"
+          expect:
+            - statusCode: 200
+      - think: 5
+      
+  - name: "Product search and details"
+    flow:
+      - get:
+          url: "/"
+      - think: 2
+      - get:
+          url: "/products"
+          capture:
+            - selector: "a.product-item"
+              attr: "href"
+              as: "productUrl"
+              count: 3
+      - function: "selectRandomProduct"
+      - get:
+          url: "{{ productUrl }}"
+          expect:
+            - statusCode: 200
+      - think: 3
+      - get:
+          url: "/search?q=popular+item"
+          expect:
+            - statusCode: 200
+
+  - name: "User authentication flow"
+    weight: 3
+    flow:
+      - get:
+          url: "/login"
+          expect:
+            - statusCode: 200
+      - think: 3
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "testuser{{ $randomNumber(1, 1000) }}"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: [200, 401]
+      - function: "handleAuthResponse"
+      - think: 2
+      - get:
+          url: "/account"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: [200, 302]
+
+  - name: "API performance test"
+    weight: 5
+    flow:
+      - get:
+          url: "/api/products"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+      - think: 1
+      - get:
+          url: "/api/categories"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+      - think: 1
+      - get:
+          url: "/api/featured"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
