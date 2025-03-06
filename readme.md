@@ -2,19 +2,27 @@
 
 This repository contains a comprehensive CI/CD pipeline implementation for web content deployment using Azure DevOps. The pipeline is designed to automate the entire process from code commit to production deployment with proper testing, security checks, and performance monitoring.
 
-## CI/CD Pipeline Visualization
+## CI/CD Pipeline Flow Diagram
 Developer Commit → Pull Request → Code Review & Automated Tests
+                                  
                                    ↓
+                   
                    Build Application
+                   
                    ↓
+       
        Unit Tests → Code Analysis → Security Scan → Package Application
                                                    ↓
+                   
                    Deploy to Dev → Run Tests → Collect Metrics
                                                    ↓
+                   
                    Deploy to Staging
                    ↓
+       
        E2E Tests → Load Tests → Performance Tests → Manual Approval
                                                    ↓
+                  
                    Deploy to Production → Purge CDN → Smoke Tests → Monitoring
 
 Workflow Steps
