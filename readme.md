@@ -4,16 +4,15 @@ This repository contains a comprehensive CI/CD pipeline implementation for web c
 
 ## CI/CD Pipeline Visualization
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#000000', 'primaryColor': '#000000', 'primaryBorderColor': '#333333', 'secondaryBorderColor': '#333333' }}}%%
-flowchart TB
-    subgraph "Development"
+%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#000000', 'primaryColor': '#000000', 'secondaryColor': '#000000', 'tertiaryColor': '#000000', 'primaryBorderColor': '#444444', 'secondaryBorderColor': '#444444', 'tertiaryBorderColor': '#444444' }}}%%
+    subgraph 
         Dev_Commit["Developer Commit"]
         PR["Pull Request"]
         Code_Review["Code Review"]
         Auto_Tests["Automated Tests"]
     end
     
-    subgraph "CI Pipeline"
+    subgraph
         Build["Build Application"]
         Unit_Tests["Unit Tests"]
         Code_Analysis["Code Analysis\nSonarQube"]
@@ -21,14 +20,14 @@ flowchart TB
         Package["Package\nApplication"]
     end
     
-    subgraph "CD Pipeline"
+    subgraph
         subgraph "Dev Environment"
             Dev_Deploy["Deploy to Dev"]
             Dev_Tests["Run Tests"]
             Dev_Metrics["Collect Metrics"]
         end
         
-        subgraph "Staging Environment"
+        subgraph
             Staging_Deploy["Deploy to Staging"]
             E2E_Tests["E2E Tests"]
             Load_Tests["Load Tests"]
@@ -36,7 +35,7 @@ flowchart TB
             Stage_Approval["Manual Approval"]
         end
         
-        subgraph "Production Environment"
+        subgraph
             Prod_Deploy["Deploy to Production"]
             CDN_Purge["Purge CDN"]
             Smoke_Tests["Smoke Tests"]
