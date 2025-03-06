@@ -4,6 +4,7 @@ This repository contains a comprehensive CI/CD pipeline implementation for web c
 
 ## CI/CD Pipeline Visualization
 ```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#1e1e1e', 'primaryColor': '#2a2a2a' }}}%%
 flowchart TB
     subgraph "Development"
         Dev_Commit["Developer Commit"]
@@ -69,12 +70,12 @@ flowchart TB
     CDN_Purge --> Smoke_Tests
     Smoke_Tests --> Monitoring
     
-    classDef devphase fill:#A1D6E2,stroke:#1A3A3A,stroke-width:2px,color:#000000
-    classDef ciphase fill:#F9C784,stroke:#995D2A,stroke-width:2px,color:#000000
-    classDef cdphase fill:#C3E8BD,stroke:#2F6D3A,stroke-width:2px,color:#000000
-    classDef devenv fill:#68BBE3,stroke:#0E4E6C,stroke-width:1px,color:#000000
-    classDef stageenv fill:#F67280,stroke:#9A2A2A,stroke-width:1px,color:#000000
-    classDef prodenv fill:#A0D995,stroke:#2D6A3A,stroke-width:1px,color:#000000
+    classDef devphase fill:#3B78B6,stroke:#5E9AD1,stroke-width:2px,color:#FFFFFF,font-weight:bold
+    classDef ciphase fill:#C78F3C,stroke:#E1A95B,stroke-width:2px,color:#FFFFFF,font-weight:bold
+    classDef cdphase fill:#3D9250,stroke:#60AD71,stroke-width:2px,color:#FFFFFF,font-weight:bold
+    classDef devenv fill:#336A99,stroke:#5D8BB1,stroke-width:2px,color:#FFFFFF
+    classDef stageenv fill:#A03939,stroke:#C15454,stroke-width:2px,color:#FFFFFF
+    classDef prodenv fill:#407F40,stroke:#609460,stroke-width:2px,color:#FFFFFF
     
     class Dev_Commit,PR,Code_Review,Auto_Tests devphase
     class Build,Unit_Tests,Code_Analysis,Sec_Scan,Package ciphase
