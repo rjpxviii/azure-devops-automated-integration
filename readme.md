@@ -4,7 +4,7 @@ This repository contains a comprehensive CI/CD pipeline implementation for web c
 
 ## CI/CD Pipeline Visualization
 ```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#000000', 'primaryColor': '#101010' }}}%%
+%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#000000', 'primaryColor': '#000000', 'primaryBorderColor': '#333333', 'secondaryBorderColor': '#333333' }}}%%
 flowchart TB
     subgraph "Development"
         Dev_Commit["Developer Commit"]
