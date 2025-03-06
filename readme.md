@@ -3,86 +3,42 @@
 This repository contains a comprehensive CI/CD pipeline implementation for web content deployment using Azure DevOps. The pipeline is designed to automate the entire process from code commit to production deployment with proper testing, security checks, and performance monitoring.
 
 ## CI/CD Pipeline Visualization
-```mermaid
-%%{init: {'theme': 'dark', 'themeVariables': { 'background': '#000000', 'primaryColor': '#000000', 'secondaryColor': '#000000', 'tertiaryColor': '#000000', 'primaryBorderColor': '#444444', 'secondaryBorderColor': '#444444', 'tertiaryBorderColor': '#444444' }}}%%
-    subgraph 
-        Dev_Commit["Developer Commit"]
-        PR["Pull Request"]
-        Code_Review["Code Review"]
-        Auto_Tests["Automated Tests"]
-    end
-    
-    subgraph
-        Build["Build Application"]
-        Unit_Tests["Unit Tests"]
-        Code_Analysis["Code Analysis\nSonarQube"]
-        Sec_Scan["Security Scan"]
-        Package["Package\nApplication"]
-    end
-    
-    subgraph
-        subgraph "Dev Environment"
-            Dev_Deploy["Deploy to Dev"]
-            Dev_Tests["Run Tests"]
-            Dev_Metrics["Collect Metrics"]
-        end
-        
-        subgraph
-            Staging_Deploy["Deploy to Staging"]
-            E2E_Tests["E2E Tests"]
-            Load_Tests["Load Tests"]
-            Perf_Tests["Performance Tests\nLighthouse"]
-            Stage_Approval["Manual Approval"]
-        end
-        
-        subgraph
-            Prod_Deploy["Deploy to Production"]
-            CDN_Purge["Purge CDN"]
-            Smoke_Tests["Smoke Tests"]
-            Monitoring["Post-Deployment\nMonitoring"]
-        end
-    end
-    
-    Dev_Commit --> PR
-    PR --> Code_Review
-    PR --> Auto_Tests
-    Code_Review --> Build
-    Auto_Tests --> Build
-    
-    Build --> Unit_Tests
-    Unit_Tests --> Code_Analysis
-    Code_Analysis --> Sec_Scan
-    Sec_Scan --> Package
-    
-    Package --> Dev_Deploy
-    Dev_Deploy --> Dev_Tests
-    Dev_Tests --> Dev_Metrics
-    Dev_Metrics --> Staging_Deploy
-    
-    Staging_Deploy --> E2E_Tests
-    E2E_Tests --> Load_Tests
-    Load_Tests --> Perf_Tests
-    Perf_Tests --> Stage_Approval
-    Stage_Approval --> Prod_Deploy
-    
-    Prod_Deploy --> CDN_Purge
-    CDN_Purge --> Smoke_Tests
-    Smoke_Tests --> Monitoring
-    
-    classDef devphase fill:#3B78B6,stroke:#5E9AD1,stroke-width:2px,color:#FFFFFF,font-weight:bold
-    classDef ciphase fill:#C78F3C,stroke:#E1A95B,stroke-width:2px,color:#FFFFFF,font-weight:bold
-    classDef cdphase fill:#3D9250,stroke:#60AD71,stroke-width:2px,color:#FFFFFF,font-weight:bold
-    classDef devenv fill:#336A99,stroke:#5D8BB1,stroke-width:2px,color:#FFFFFF
-    classDef stageenv fill:#A03939,stroke:#C15454,stroke-width:2px,color:#FFFFFF
-    classDef prodenv fill:#407F40,stroke:#609460,stroke-width:2px,color:#FFFFFF
-    
-    class Dev_Commit,PR,Code_Review,Auto_Tests devphase
-    class Build,Unit_Tests,Code_Analysis,Sec_Scan,Package ciphase
-    class Dev_Deploy,Dev_Tests,Dev_Metrics,Staging_Deploy,E2E_Tests,Load_Tests,Perf_Tests,Stage_Approval,Prod_Deploy,CDN_Purge,Smoke_Tests,Monitoring cdphase
-    class Dev_Deploy,Dev_Tests,Dev_Metrics devenv
-    class Staging_Deploy,E2E_Tests,Load_Tests,Perf_Tests,Stage_Approval stageenv
-    class Prod_Deploy,CDN_Purge,Smoke_Tests,Monitoring prodenv
-```
+CI/CD Pipeline Workflow
+Development Phase
+CopyDeveloper Commit → Pull Request → Code Review & Automated Tests
+                                   ↓
+Continuous Integration
+Copy                   Build Application
+                   ↓
+       Unit Tests → Code Analysis → Security Scan → Package Application
+Deployment Pipeline
+Development Environment
+CopyPackage Application → Deploy to Dev → Run Tests → Collect Metrics
+                                                   ↓
+Staging Environment
+Copy                   Deploy to Staging
+                   ↓
+       E2E Tests → Load Tests → Performance Tests → Manual Approval
+Production Environment
+CopyDeploy to Production → Purge CDN → Smoke Tests → Post-Deployment Monitoring
+Workflow Steps
+
+Developer commits code and creates a pull request
+Code review and automated tests are performed
+Application is built and goes through integration checks
+Deployed to development environment for initial testing
+Progresses to staging for comprehensive testing
+Manual approval triggers production deployment
+Final smoke tests and monitoring in production
+
+Key Checkpoints
+
+Code Review
+Automated Tests
+Security Scanning
+Performance Testing
+Manual Staging Approval
+Post-Deployment Monitoring
 
 ## Features
 
