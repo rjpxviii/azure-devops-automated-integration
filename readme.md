@@ -165,4 +165,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - [Azure DevOps Documentation](https://docs.microsoft.com/en-us/azure/devops/)
 - [Azure Bicep Documentation](https://docs.microsoft.com/en-us/azure/azure-resource-manager/bicep/)
-- [CI/CD Best Practices](https://docs.microsoft.com/en-us/azure/architecture/example-scenario/apps/devops-dotnet-webapp)
+
